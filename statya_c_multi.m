@@ -2,7 +2,7 @@
 %clc;
 clear;
 multiflag = 1;
-NP = 7;
+NP = 4; %число опционов (от 1 до 7)
 rng('default');
 %rng(59947);
 rng(357);
@@ -81,15 +81,6 @@ disp(['Время выполнения: ',num2str(toc)])
 
 
 for k= 1:NP
-%     figure;
-%     surf(x,t,trueu); %поверхность с ценой опциона акции
-%     hold on;
-%     shading interp
-%     plot3(phi(1+(k-1)*200:1:1201+(k-1)*200),t1,g(k,:),'g-','LineWidth',2);
-%     title('Цена опциона u(t,x)')
-%     xlabel('Цена акции')
-%     ylabel('Время в месяцах')
-%     hold off;
     %графики цены акции и опциона
     figure; 
     subplot(2,1,1);
@@ -108,33 +99,13 @@ for k= 1:NP
     title(['g_{',num2str(k),'}(t) цена опциона']);
 end
 
-%%
-figure; 
-subplot(2,1,1);
-plot(t0, K*ones(length(t0)), 'r--');
-hold on;
-plot(t0 ,phi,'g', 'LineWidth', 1);
-xlabel('t - время в месяцах');
-ylabel('s - цена акции');
-title('s=\phi(t) цена акции');
-subplot(2,1,2);
-plot(t0, zeros(length(t0)), 'k--');
-hold on;
-legendNP = cell(1,NP);
-for k = 1:NP
-    plot(t0(1+(k-1)*200:1:1201+(k-1)*200) ,g(k,:), 'LineWidth', 0.5);
-    %legendNP(k) = strcat(['g_{',num2str(k),'}(t)'])
-end
-xlabel('t - время в месяцах');
-ylabel('u - цена опциона');
-%title(['g_{',num2str(k),'}(t) цена опциона']);
 
 
 %% ---цикл---
 
 
-rflag = 0;
-r0 = 0.06; %0.04
+rflag = 0; %при значении = 1 обобщение задачи на случай неизвестного r
+r0 = 0.06; 
 
 a = find(x==0.75);
 b = find(x==1.04);
@@ -149,7 +120,7 @@ for k = 1:NP
     G(:,:,k) = repmat(g(k,end:-1:1)',1,size(x,2)); %G(T-t1)
     Q1(:,:,k) = 2*delta(x1,phi1); %Q=Q1.*(u-G), Q1=2*delta(s-phi(T-t1))
 end
-N = 10; %число итераций цикла
+N = 5000; %число итераций цикла
 
 J = zeros(1,N+1); %значение функционала
 acc = zeros(1,N+1); %точность
@@ -157,9 +128,8 @@ sig = @(x) 0.1*sqrt(x)/sqrt(3); %начальное приближение
 vsig = zeros(N+1,size(x,2));
 vsig(1,:) = sig(x); %значения приближения функции sigma(s) на сетке
 
-alpha = (0.0015)*ones(1,N); %0.00003
+alpha = (0.0015/NP)*ones(1,N); 
 %alpha = 0.05./sqrt(1:1:N);
-%alpha = linspace(0.00001,0.0005,N);
 disp('----------');
 disp(['Значения гиперпараметров: alpha=',num2str(alpha(1)),'; eps=',num2str(eps)]);
 
@@ -184,12 +154,7 @@ for i = 1:N
         g_i(k,:) = interp2(x,t,u,phi(1+(k-1)*200:1:1201+(k-1)*200),t1); %реальная цена опциона акции
         J(i) = J(i) + t(2)*trapz((g_i(k,:)-g(k,:)).^2); %значение функционала
     end   
-    %---------
-    if i > 1
-        pok = (J(i-1)-J(i))/(alpha(i-1)*dot_pr);
-        disp(['Значение показателя на шаге ',num2str(i-1),' равно ',num2str(pok)]);
-    end
-    %---------
+    
     acc(i) = x(2)*trapz((vsig(i,a:1:b)-truevsig(a:1:b)).^2); %точность на отрезке
     Q = zeros(1201,151);
     for k = 1:NP
@@ -197,16 +162,9 @@ for i = 1:N
     end
     psi = psi_c(x,t,vsig(i,:),r*ones(1,size(x,2)),Q);
     psi = psi(end:-1:1,:); %сопряженная система
-    figure
-    surf(x,t,psi); %поверхность с ценой опциона акции
-    hold on;
-    shading interp
+
     u_ss = ddif(u,x(2)); 
-    %--------
-    a_grad = t(2)/2*trapz(u_ss.*psi).*x.^2;
-    dot_pr = dot(a_grad,a_grad);
-    vsig(i+1,:) = vsig(i,:) + alpha(i)*a_grad; %/2*t(2)*trapz(u_ss.*psi).*x.^2; %обновление функции sigma(s)
-    %--------
+    vsig(i+1,:) = vsig(i,:) + alpha(i)/2*t(2)*trapz(u_ss.*psi).*x.^2; %обновление функции sigma(s)
     if rflag == 1  
         acc_r(i) = abs(vr(i)-r_true);       
         u_s = dif(u,x(2));
@@ -312,8 +270,7 @@ hold on;
 plot(x0,vminj,'r--','LineWidth', 1);
 xlabel('s - Цена акции');
 xlim([x(a) x(b)]);
-%'Сравнение \sigma_{',num2str(minj),'}(s) с \sigma(s), 
-%title(['\alpha=',num2str(alpha,'%10.2e')]);%, NP=',num2str(NP)])
+title(['Сравнение предсказанной функции \sigma_{',num2str(minj),'}(s) с \sigma(s)'])
 legend('sigma(s)',['sigma_{',num2str(minj),'}(s)'],'Location','southeast');
 hold off;
 disp(['Шаг, на котором достигается наименьшее значение функционала J:',num2str(minj)]);
@@ -336,28 +293,29 @@ disp(['Значение функционала J на ',num2str(minj),'-м шаге ',num2str(J(minj),'%10
 end
 %% сравнение настоящей функции с приближенной-лучшей по acc_r
 
-a = find(x==0.75); %0.77
-b = find(x==1.04); %1.02
-x0 = x(a:1:b);
-vminacc_r = vr(minacc_r,a:1:b);
+if rflag == 1
+    a = find(x==0.75); %0.77
+    b = find(x==1.04); %1.02
+    x0 = x(a:1:b);
+    vminacc_r = vr(minacc_r,a:1:b);
+    figure;
+    plot(x0,r_true(a:1:b),'g-','LineWidth', 1);
+    hold on;
+    plot(x0,vminacc_r,'r--','LineWidth', 1);
+    xlabel('s - Цена акции');
+    xlim([x(a) x(b)]);
+    title(['Сравнение предсказанной функции r_{',num2str(minacc_r),'}(s) с r(s)'])
+    legend('r(s)',['r_{',num2str(minacc_r),'}(s)'],'Location','southeast');
+    hold off;
+    disp(['Шаг, на котором лучше всего приближается функция r: ',num2str(minacc_r)]);
+    disp(['Значение функционала acc на ',num2str(minacc_r),'-м шаге ',num2str(acc(minacc_r),'%10.2e')]);
+    disp(['Значение функционала J на ',num2str(minacc_r),'-м шаге ',num2str(J(minacc_r),'%10.2e')]);
+    disp(['Значение функционала acc_r на ',num2str(minacc_r),'-м шаге ',num2str(acc_r(minacc_r),'%10.2e')]);
+end
+%% анимация (сравнение предсказанных функций с настоящей)
 figure;
-plot(x0,r_true(a:1:b),'g-','LineWidth', 1);
-hold on;
-plot(x0,vminacc_r,'r--','LineWidth', 1);
-xlabel('s - Цена акции');
-xlim([x(a) x(b)]);
-title(['Сравнение предсказанной функции r_{',num2str(minacc_r),'}(s) с r(s)'])
-legend('r(s)',['r_{',num2str(minacc_r),'}(s)'],'Location','southeast');
-hold off;
-disp(['Шаг, на котором лучше всего приближается функция r: ',num2str(minacc_r)]);
-disp(['Значение функционала acc на ',num2str(minacc_r),'-м шаге ',num2str(acc(minacc_r),'%10.2e')]);
-disp(['Значение функционала J на ',num2str(minacc_r),'-м шаге ',num2str(J(minacc_r),'%10.2e')]);
-disp(['Значение функционала acc_r на ',num2str(minacc_r),'-м шаге ',num2str(acc_r(minacc_r),'%10.2e')]);
-
-%%
-figure;
-vid = VideoWriter('с_sigma5000_alpha05_eps5001.mp4','MPEG-4');
-vid.FrameRate = 5;
+vid = VideoWriter('movie_multi.mp4','MPEG-4');
+vid.FrameRate = 50;
 open(vid);
 mov(1:N+1) = struct('cdata', [], 'colormap', []);
 for i=1:N+1
